@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>water demo</title>
+  <style type="text/css">
+  body{
+  padding:0;margin:0;}
+#cloud{
+  position: absolute;
+  left: 50%;
+  margin-left: -400px;
+}
+#wave{
+  margin:0 auto;
+  display: block;
+}
+</style>
+</head>
+<body>
+<svg id="cloud" width="800" height="70"></svg>
+<svg id="wave" width="800" height="360">
+
+</svg>
+<button id="weather">切换天气</button>
+<script src="http://libs.baidu.com/jquery/2.0.0/jquery.min.js"></script>
+<script type="text/javascript" src="http://snapsvg.io/assets/js/snap.svg-min.js"></script>
+<script type="text/javascript">
+	/**
+         * 作者: luxueyan
+         * 博客: http://hi.gitcafe.com
+         * 参考: http://gamedev.stackexchange.com/questions/44547/2d-water-with-dynamic-waves
+         * 注: 原文包含lua和prosessing.js
+         */
+var s = Snap('#wave');
+//波预设
+var wave = s.paper.path('').attr({
+  stroke: 'Cyan',
+  fill: 'Cyan'
+});
+//雨滴
+// var rains = makeRains();
+
+//河岸
+var bank = s.paper.path('M50 150 H100 V350H700V150H750').attr({
+  stroke: 'silver',
+  strokeWidth: 5,
+  fill: 'none',
+  strokeLinejoin: 'round'
+});
+var lastUpdate = +new Date;
+
+// rain count
+var RAIN_COUNT = 6;
+// Resolution of simulation
+var NUM_POINTS = 180;
+// Width of simulation
+var WIDTH = 600;
+// Horizonal Position
+var X_OFFSET = 100;
+// Spring constant for forces applied by adjacent points
+var SPRING_CONSTANT = 0.005;
+// Sprint constant for force applied to baseline
+var SPRING_CONSTANT_BASELINE = 0.005;
+// Vertical draw offset of simulation
+var Y_OFFSET = 200;
+// Damping to apply to speed changes
+var DAMPING = 0.99;
+// Number of iterations of point-influences-point to do on wave per step
+// (this makes the waves animate faster)
+var ITERATIONS = 5;
+
+// A phase difference to apply to each sine
+var offset = 0;
+
+var NUM_BACKGROUND_WAVES = 7;
+var BACKGROUND_WAVE_MAX_HEIGHT = 5;
+var BACKGROUND_WAVE_COMPRESSION = 1 / 10;
+// Amounts by which a particular sine is offset
+var sineOffsets = [];
+// Amounts by which a particular sine is amplified
+var sineAmplitudes = [];
+// Amounts by which a particular sine is stretched
+var sineStretches = [];
+// Amounts by which a particular sine's offset is multiplied
+var offsetStretches = [];
+// Set each sine's values to a reasonable random value
+var tableContent = "";
+var rainState;
+var wavePoints = makeWavePoints(NUM_POINTS);
+
+function init() {
+  for (var i = -0; i < NUM_BACKGROUND_WAVES; i++) {
+    var sineOffset = -Math.PI + 2 * Math.PI * Math.random();
+    sineOffsets.push(sineOffset);
+    var sineAmplitude = Math.random() * BACKGROUND_WAVE_MAX_HEIGHT;
+    sineAmplitudes.push(sineAmplitude);
+    var sineStretch = Math.random() * BACKGROUND_WAVE_COMPRESSION;
+    sineStretches.push(sineStretch)
+    var offsetStretch = Math.random() * BACKGROUND_WAVE_COMPRESSION;
+    offsetStretches.push(offsetStretch);
+  }
+  //cloud
+  var c = Snap('#cloud');
+  c.paper.path('M100.063,20c0,0-49.649-28.854,85.269-19.895c31.768-24.37,130.412-9.946,130.412-9.946c42.981-8.315,170.958-20.393,147.551,13.429c-8.247,11.914,38.582-3.945,57.264,8.454c30.454,20.216,2.868,23.573-44.308,23.252c-30.094,9.155-41.798,4.974-41.798,4.974c-75.237,14.051-29.94-6.469-96.172,1.119c-56.335,6.454-48.23,0.885-134.444,0.688c-81.296-0.184-53.616-6.159-80.366-7.154c2.579,9.812,-5.063,-6.227,-10.063,-10.227z').attr({stroke:'#A7A9AC', fill:"#A7A9AC"});
+  c.paper.path('M280.063,20c0,0-49.649-28.854,85.269-19.895c31.768-24.37,130.412-9.946,130.412-9.946c42.981-8.315,170.958-20.393,147.551,13.429c-8.247,11.914,38.582-3.945,57.264,8.454c30.454,20.216,2.868,23.573-44.308,23.252c-30.094,9.155-41.798,4.974-41.798,4.974c-75.237,14.051-29.94-6.469-96.172,1.119c-56.335,6.454-48.23,0.885-134.444,0.688c-81.296-0.184-53.616-6.159-80.366-7.154c2.579,9.812,-5.063,-6.227,-10.063,-10.227z').attr({stroke:'#A7A9AC', fill:"#A7A9AC"});
+}
+
+// Make points to go on the wave
+function makeWavePoints(numPoints) {
+  var t = [];
+  for (var n = 0; n < numPoints; n++) {
+    // This represents a point on the wave
+    var newPoint = {
+      x: n / numPoints * WIDTH + X_OFFSET,
+      y: Y_OFFSET,
+      spd: {
+        y: 0
+      }, // speed with vertical component zero
+      mass: 1
+    }
+    t.push(newPoint);
+  }
+  return t
+}
+
+// This function sums together the sines generated above,
+// given an input value x
+function overlapSines(x) {
+  var result = 0;
+  for (var i = 0; i < NUM_BACKGROUND_WAVES; i++) {
+    result = result + sineOffsets[i] + sineAmplitudes[i] * Math.sin(x * sineStretches[i] + offset * offsetStretches[i]);
+
+
+  }
+  return result;
+}
+
+// Update the positions of each wave point
+function updateWavePoints(points, dt) {
+  for (var i = 0; i < ITERATIONS; i++) {
+
+    for (var n = 0; n < points.length; n++) {
+      var p = points[n];
+      // force to apply to this point
+      var force = 0;
+
+      // forces caused by the point immediately to the left or the right
+      var forceFromLeft, forceFromRight;
+
+      if (n == 0) { // wrap to left-to-right
+        var dy = points[points.length - 1].y - p.y;
+        forceFromLeft = SPRING_CONSTANT * dy;
+      } else { // normally
+        var dy = points[n - 1].y - p.y;
+        forceFromLeft = SPRING_CONSTANT * dy;
+      }
+      if (n == points.length - 1) { // wrap to right-to-left
+        var dy = points[0].y - p.y;
+        forceFromRight = SPRING_CONSTANT * dy;
+      } else { // normally
+        var dy = points[n + 1].y - p.y;
+        forceFromRight = SPRING_CONSTANT * dy;
+      }
+
+      // Also apply force toward the baseline
+      var dy = Y_OFFSET - p.y;
+      forceToBaseline = SPRING_CONSTANT_BASELINE * dy;
+
+      // Sum up forces
+      force = force + forceFromLeft;
+      force = force + forceFromRight;
+      force = force + forceToBaseline;
+
+      // Calculate acceleration
+      var acceleration = force / p.mass;
+
+      // Apply acceleration (with damping)
+      p.spd.y = DAMPING * p.spd.y + acceleration;
+
+      // Apply speed
+      p.y = p.y + p.spd.y;
+    }
+  }
+}
+
+// Callback for drawing
+function drawWave(dt) {
+
+  offset = offset + 1;
+  // Update positions of points
+  updateWavePoints(wavePoints, dt)
+  var path = [];
+  //构造路径
+  for (var n = 0; n < wavePoints.length; n++) {
+    var p = wavePoints[n];
+    if (n == 0) {
+      path.push('M' + p.x + ' ' + (p.y + overlapSines(p.x, 0, 0)));
+    } else {
+      path.push(p.x + ' ' + (p.y + overlapSines(p.x)));
+    }
+
+  }
+  path.push('V350H100V150');
+  wave.attr({
+    path: path
+  });
+}
+//make rains
+function makeRains() {
+  var rains = [];
+  for (var n = 0; n < RAIN_COUNT; n++) {
+    rains.push([X_OFFSET + WIDTH * Math.random(), 50 * Math.random(), 1, 3]);
+  }
+  return rains;
+}
+//获取雨点对应点的index
+function getClosestPointIndex(cx) {
+  var left = parseInt((cx - X_OFFSET) / (WIDTH / NUM_POINTS) - 1);
+  return left + (Math.abs(wavePoints[left].x - cx) > Math.abs(wavePoints[left + 1].x - cx));
+
+  // var high = NUM_POINTS - 1;
+  // var low = 0;
+  // var mid = 0;
+  // var index, x;
+  // while (low <= high) {
+  //     mid = parseInt((high + low)/2);
+  //     x = wavePoints[mid].x;
+  //     if (x == cy) {
+  //         index = mid;
+  //         break;
+  //     } else if (high - low = 1) {
+  //         index = Math.abs(wavePoints[high].x - cy) > Math.abs(wavePoints[low].x - cy) ? high : low;
+  //         break;
+  //     } else if (x > cy) {
+  //         high = mid - 1;
+  //     } else if (x < cy) {
+  //         low = mid + 1;
+  //     }
+  // }
+  // return index;
+}
+
+function updateRains(now) {
+  var rains = s.selectAll('ellipse');
+  rains.forEach(function(e, i) {
+    var cx = parseInt(e.attr('cx'));
+    var closestPointIndex = parseInt(e.attr('data-cp-index'));
+    var cy = parseInt(e.attr('data-start-y')) + 0.5 * Math.pow((now - parseInt(e.attr('data-start-time'))) / 50, 2);
+    if (wavePoints[closestPointIndex].y <= cy) {
+      wavePoints[closestPointIndex].y = Y_OFFSET + 10;
+      e.remove();
+    } else {
+      e.attr({
+        cy: cy
+      });
+    }
+  });
+}
+
+function drawRains() {
+  var rains = makeRains();
+  var l = rains.length;
+  // var g = s.g();
+  var now = +new Date;
+  for (var n = 0; n < l; n++) {
+    s.paper.ellipse(rains[n][0], rains[n][1], rains[n][2], rains[n][3]).attr({
+      'data-start-time': now,
+      'fill': 'Cyan',
+      'data-cp-index': getClosestPointIndex(rains[n][0]),
+      'data-start-y': rains[n][1]
+    });
+  }
+  rainState = 'on';
+}
+
+function run() {
+  var now = +new Date;
+  var dt = now - lastUpdate;
+  lastUpdate = now;
+  drawWave(dt);
+  updateRains(now);
+}
+
+var rainHd = setInterval(drawRains, 500);
+init();
+//begin run
+var runHd = setInterval(function() {
+  run();
+}, 30);
+$('#weather').click(function(){
+  if(rainState == 'on') {
+    clearInterval(rainHd);
+    rainState = 'off';
+  } else {
+    rainHd = setInterval(drawRains, 500);
+  }
+});
+</script>
+</body>
+</html>
