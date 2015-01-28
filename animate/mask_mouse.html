@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>mask demo</title>
+<style>
+body {background: #000;font-family: sans-serif;text-align:center;color:#fff;}
+.wrapper {
+  width: 1000px;
+  margin: 0 auto;
+  position:relative;
+}
+h1{
+  padding-top: 10px;
+  position:absolute;
+  width:100%;
+}
+#drawing {
+  display:none;
+}
+#start {
+  display:block;
+  color: #fff;
+  text-decoration:none;
+  width:100px;
+  height:30px;
+  line-height:30px;
+  background: #999;
+  border-radius:5px;
+  text-align:center;
+  font-size:12px;
+  margin:140px auto;
+}
+.bg {
+  width: 1000px;
+  height: 667px;
+  border: 1px solid #fff;
+  background-position:center;
+  background-repeat: no-repeat;
+}
+.overlay {
+  fill: #fff;
+}
+#hole {
+  fill:#000;
+}
+.masked {
+  fill: #000;
+}
+#pointer {
+  stroke: #FFF200;
+  stroke-width:3px;
+  fill: none;
+}
+</style>
+
+</head>
+<body>
+<div class="wrapper">
+  <div id="bg" class="bg">
+    <h1>猜猜我是谁</h1>
+    <a href="#" id="start">开始</a> 
+    <svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="1000px" height="667px" id="drawing">
+    <mask id="m1">
+      <rect width="1000px" height="667px" class="overlay" />
+      <circle r="80" id="hole" />
+    </mask>
+    <rect width="1000px" height="667px" mask="url(#m1)" class="masked" />
+    <circle r="80" id="pointer" />
+    </svg> 
+  </div>
+</div>
+
+<script type="text/javascript">
+var hole = document.querySelector('#hole');
+var pointer = document.querySelector('#pointer');
+var bg =document.querySelector('#bg');
+var rect;
+var startBtn = document.querySelector('#start');
+var drawing = document.querySelector('#drawing');
+startBtn.addEventListener('click',onStart)
+function onStart(evt) {
+  evt.preventDefault();
+  bg.style.backgroundImage = "url('images/zhuface.png')";
+  startBtn.style.display = 'none';
+  drawing.style.display = 'block';
+  rect = drawing.getBoundingClientRect();
+  document.addEventListener('mousemove', onMouseMove);
+}
+function onMouseMove(evt) {
+  movePointerTo(evt.x - rect.left + window.pageXOffset, evt.y - rect.top + window.pageYOffset);
+}
+function movePointerTo(x, y) {
+  hole.setAttribute('cx', x); 
+  hole.setAttribute('cy', y); 
+  pointer.setAttribute('cx', x); 
+  pointer.setAttribute('cy', y); 
+}
+</script>
+</body>
+</html>
+
